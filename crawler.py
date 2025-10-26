@@ -8,6 +8,7 @@ from typing import Any
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
+
 from crawl4ai import AsyncWebCrawler, CacheMode, CrawlerRunConfig
 
 
@@ -279,9 +280,6 @@ async def crawl_site(urls: list[str], output_dir: str) -> None:
         stats.saved += 1
 
     base_url = urls[0]
-
-    for url in urls:
-        url_set.add(url)
 
     print(f"\n🕷️  Tiny Crawl")
     print(f"   Base URL: {base_url}")
