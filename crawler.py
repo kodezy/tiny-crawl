@@ -19,11 +19,13 @@ async def crawl_single(url: str, output_dir: str, use_cache: bool = False) -> No
     output_path = Path(output_dir)
     output_path.mkdir(exist_ok=True)
 
+    normalized_url = _normalize_url(url)
+
     cache_mode = CacheMode.ENABLED if use_cache else CacheMode.DISABLED
     config = CrawlerRunConfig(cache_mode=cache_mode, verbose=True)
 
     async with AsyncWebCrawler() as crawler:
-        result = await crawler.arun(url, config=config)
+        result = await crawler.arun(normalized_url, config=config)
 
         if result.success:
             markdown = _get_markdown_content(result)
@@ -52,7 +54,9 @@ async def crawl_site(urls: list[str], output_dir: str, max_depth: int = 2, use_c
 
     async with AsyncWebCrawler() as crawler:
         for url in urls:
-            async for result in await crawler.arun(url, config=config):
+            normalized_url = _normalize_url(url)
+
+            async for result in await crawler.arun(normalized_url, config=config):
                 if result.success:
                     markdown = _get_markdown_content(result)
 
@@ -64,6 +68,8 @@ async def crawl_multi(urls: list[str], output_dir: str, use_cache: bool = False)
     """Crawl a list of URLs and save the results to markdown files."""
     output_path = Path(output_dir)
     output_path.mkdir(exist_ok=True)
+
+    normalized_urls = [_normalize_url(url) for url in urls]
 
     if not urls:
         return
@@ -82,7 +88,7 @@ async def crawl_multi(urls: list[str], output_dir: str, use_cache: bool = False)
     )
 
     async with AsyncWebCrawler() as crawler:
-        results = await crawler.arun_many(urls, config=config, dispatcher=dispatcher)
+        results = await crawler.arun_many(normalized_urls, config=config, dispatcher=dispatcher)
         for result in results:
             if result.success:
                 markdown = _get_markdown_content(result)
@@ -103,6 +109,14 @@ def _load_urls(filepath: str) -> list[str]:
     except Exception as exception:
         print(f"Error reading file '{filepath}': {exception}")
         raise
+
+
+def _normalize_url(url: str) -> str:
+    """Add https:// if URL doesn't have a protocol."""
+    url = url.strip()
+    if not url.startswith(("http://", "https://", "file://", "raw:")):
+        return f"https://{url}"
+    return url
 
 
 def _get_filename(url: str) -> str:
