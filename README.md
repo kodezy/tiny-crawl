@@ -16,9 +16,14 @@ python crawler.py https://example.com
 ```
 
 ### Recursive Crawling
-Follows all links on the same domain indefinitely:
+Follows all links on the same domain up to the specified depth:
 ```bash
 python crawler.py https://example.com --recursive
+```
+
+Or specify a custom depth:
+```bash
+python crawler.py https://example.com --recursive --depth 3
 ```
 
 ### Multiple URLs from File
@@ -34,17 +39,26 @@ Then run:
 python crawler.py --file urls.txt
 ```
 
+### Cache
+Enable HTTP caching to avoid re-downloading pages:
+```bash
+python crawler.py https://example.com -c
+python crawler.py https://example.com --cache
+```
+
 ### Options
 - `url`: Single URL to crawl (optional if using --file)
-- `--file`, `-f`: File containing URLs (one per line)
-- `--recursive`, `-r`: Follow links on same domain recursively
-- `--output`, `-o`: Output directory (default: docs)
+- `-f`, `--file`: File containing URLs (one per line)
+- `-r`, `--recursive`: Follow links on same domain recursively
+- `-d`, `--depth`: Max depth for recursive crawling (default: 2)
+- `-o`, `--output`: Output directory (default: docs)
+- `-c`, `--cache`: Enable HTTP cache (default: disabled)
 
 ### How It Works
-- **No page limits**: Crawls until no more links are found
-- **Smart skipping**: Automatically skips URLs that have already been crawled
-- **Progress tracking**: Shows `✓ [X] filename.md (Y queued)` in real-time
-- **Existing files**: Detects existing `.md` files and counts them as progress
+- **HTTP Cache**: Use `--cache` to enable crawl4ai's HTTP caching system
+- **Verbose output**: Shows crawl4ai's built-in progress information
+- **Depth control**: Limits crawling depth to avoid runaway crawling
+- **Stream mode**: Processes pages incrementally for better performance
 
 ## Output
 Markdown files in the output directory. Each page becomes a separate `.md` file.
