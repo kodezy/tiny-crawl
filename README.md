@@ -49,10 +49,10 @@ python crawler.py https://example.com --cache
 ### Options
 - `url`: Single URL to crawl (optional if using --file)
 - `-f`, `--file`: File containing URLs (one per line)
+- `-c`, `--cache`: Enable HTTP cache (default: disabled)
 - `-r`, `--recursive`: Follow links on same domain recursively
 - `-d`, `--depth`: Max depth for recursive crawling (default: 2)
-- `-o`, `--output`: Output directory (default: docs)
-- `-c`, `--cache`: Enable HTTP cache (default: disabled)
+- `-o`, `--output`: Output directory or .json file (default: output/)
 
 ### How It Works
 - **HTTP Cache**: Use `--cache` to enable crawl4ai's HTTP caching system
