@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 from crawl4ai import AsyncWebCrawler, CacheMode, CrawlerRunConfig
 from crawl4ai.async_dispatcher import MemoryAdaptiveDispatcher
 from crawl4ai.content_scraping_strategy import LXMLWebScrapingStrategy
-from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
+from crawl4ai.deep_crawling import BFSDeepCrawlStrategy, FilterChain, URLPatternFilter
 from crawl4ai.models import CrawlResult
 
 MIN_CONTENT_LENGTH: int = 100
@@ -18,6 +18,7 @@ async def crawl_urls(
     use_cache: bool = False,
     recursive: bool = False,
     max_depth: int = 2,
+    recursive_scope: str | None = None,
     output_dir: str = "output",
     max_session_permit: int = 10,
     memory_threshold_percent: float = 80.0,
@@ -35,15 +36,21 @@ async def crawl_urls(
         return
 
     normalized_urls = [_normalize_url(url) for url in urls]
-    config = _create_config(recursive, max_depth, use_cache)
 
     try:
         if recursive:
             async with AsyncWebCrawler() as crawler:
                 for url in normalized_urls:
+                    config = _create_config(
+                        recursive=recursive,
+                        max_depth=max_depth,
+                        use_cache=use_cache,
+                        recursive_scope=recursive_scope,
+                        start_url=url,
+                    )
                     try:
                         result = await crawler.arun(url, config=config)
-                        
+
                         if isinstance(result, list):
                             for item in result:
                                 _process_result(item, output_path, json_data if is_json_output else None)
@@ -59,6 +66,13 @@ async def crawl_urls(
                         continue
 
         else:
+            config = _create_config(
+                recursive=recursive,
+                max_depth=max_depth,
+                use_cache=use_cache,
+                recursive_scope=recursive_scope,
+                start_url=normalized_urls[0],
+            )
             dispatcher = MemoryAdaptiveDispatcher(
                 memory_threshold_percent=memory_threshold_percent,
                 max_session_permit=max_session_permit,
@@ -94,6 +108,17 @@ def main() -> None:
     parser.add_argument("-c", "--cache", action="store_true", help="Enable HTTP cache")
     parser.add_argument("-r", "--recursive", action="store_true", help="Follow links recursively")
     parser.add_argument("-d", "--depth", type=int, default=2, help="Max depth")
+    parser.add_argument(
+        "--scope",
+        "--only-under",
+        "--recursive-scope",
+        dest="recursive_scope",
+        help=(
+            "Only follow links under this prefix. "
+            "Examples: /products, products, site.com.br/products. "
+            "If omitted, recursive crawl stays under the start URL path automatically."
+        ),
+    )
     parser.add_argument("-o", "--output", default="output", help="Output directory or JSON file")
 
     args = parser.parse_args()
@@ -110,8 +135,9 @@ def main() -> None:
                 use_cache=args.cache,
                 recursive=args.recursive,
                 max_depth=args.depth,
+                recursive_scope=args.recursive_scope,
                 output_dir=args.output,
-            )
+            ),
         )
 
     except KeyboardInterrupt:
@@ -121,13 +147,24 @@ def main() -> None:
         print(f"\n❌ Fatal error: {exception}")
 
 
-def _create_config(recursive: bool = False, max_depth: int = 2, use_cache: bool = False) -> CrawlerRunConfig:
+def _create_config(
+    recursive: bool = False,
+    max_depth: int = 2,
+    use_cache: bool = False,
+    recursive_scope: str | None = None,
+    start_url: str | None = None,
+) -> CrawlerRunConfig:
     """Create a CrawlerRunConfig with the specified options."""
     cache_mode = CacheMode.ENABLED if use_cache else CacheMode.DISABLED
 
     if recursive:
+        filter_chain = _create_recursive_filter_chain(recursive_scope, start_url)
         return CrawlerRunConfig(
-            deep_crawl_strategy=BFSDeepCrawlStrategy(max_depth=max_depth, include_external=False),
+            deep_crawl_strategy=BFSDeepCrawlStrategy(
+                max_depth=max_depth,
+                include_external=False,
+                filter_chain=filter_chain,
+            ),
             scraping_strategy=LXMLWebScrapingStrategy(),
             cache_mode=cache_mode,
             stream=False,
@@ -159,7 +196,7 @@ def _add_to_json(json_data: list, url: str, content: str) -> None:
         {
             "url": url,
             "content": content,
-        }
+        },
     )
 
 
@@ -171,7 +208,7 @@ def _save_json(output_path: Path, json_data: list) -> None:
 def _load_urls(filepath: str) -> list[str]:
     """Load the URLs from a file."""
     try:
-        with open(filepath, "r", encoding="utf-8") as file:
+        with open(filepath, encoding="utf-8") as file:
             return [line.strip() for line in file if line.strip() and not line.strip().startswith("#")]
 
     except FileNotFoundError:
@@ -187,6 +224,50 @@ def _normalize_url(url: str) -> str:
     """Add https:// if URL doesn't have a protocol."""
     url = url.strip()
     return url if url.startswith(("http://", "https://", "file://", "raw:")) else f"https://{url}"
+
+
+def _create_recursive_filter_chain(recursive_scope: str | None, start_url: str | None) -> FilterChain:
+    """Create deep-crawl filter chain based on an optional URL/path scope."""
+    if not recursive_scope:
+        if not start_url:
+            return FilterChain()
+
+        parsed_start = urlparse(start_url)
+        if not parsed_start.path or parsed_start.path == "/":
+            return FilterChain()
+
+        auto_scope = f"{parsed_start.scheme}://{parsed_start.netloc}{parsed_start.path}"
+        scope_pattern = _build_scope_pattern(auto_scope, start_url)
+        return FilterChain([URLPatternFilter(patterns=[scope_pattern])])
+
+    scope_pattern = _build_scope_pattern(recursive_scope, start_url)
+    return FilterChain([URLPatternFilter(patterns=[scope_pattern])])
+
+
+def _build_scope_pattern(scope: str, start_url: str | None) -> str:
+    """Build a URLPatternFilter-compatible prefix pattern ending with /*."""
+    raw_scope = scope.strip()
+
+    if raw_scope.startswith("/"):
+        prefix = raw_scope
+    elif raw_scope.startswith(("http://", "https://")):
+        parsed_scope = urlparse(raw_scope)
+        prefix = f"{parsed_scope.scheme}://{parsed_scope.netloc}{parsed_scope.path or '/'}"
+    elif "." in raw_scope:
+        normalized_scope = _normalize_url(raw_scope)
+        parsed_scope = urlparse(normalized_scope)
+        prefix = f"{parsed_scope.scheme}://{parsed_scope.netloc}{parsed_scope.path or '/'}"
+    else:
+        if not start_url:
+            prefix = f"/{raw_scope.lstrip('/')}"
+        else:
+            parsed_start = urlparse(start_url)
+            prefix = f"{parsed_start.scheme}://{parsed_start.netloc}/{raw_scope.lstrip('/')}"
+
+    if prefix != "/" and prefix.endswith("/"):
+        prefix = prefix[:-1]
+
+    return f"{prefix}/*"
 
 
 def _get_filename(url: str) -> str:

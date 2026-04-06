@@ -16,14 +16,23 @@ python crawler.py https://example.com
 ```
 
 ### Recursive Crawling
-Follows all links on the same domain up to the specified depth:
+Follows links recursively up to the specified depth.
+
+If the start URL has a path (example: `/products`), recursion is automatically limited to that path.
 ```bash
-python crawler.py https://example.com --recursive
+python crawler.py https://site.com.br/products --recursive
 ```
 
 Or specify a custom depth:
 ```bash
 python crawler.py https://example.com --recursive --depth 3
+```
+
+Optionally force a custom path scope:
+```bash
+python crawler.py https://site.com.br --recursive --scope /products
+python crawler.py https://site.com.br --recursive --scope products
+python crawler.py https://site.com.br --recursive --scope site.com.br/products
 ```
 
 ### Multiple URLs from File
@@ -52,6 +61,7 @@ python crawler.py https://example.com --cache
 - `-c`, `--cache`: Enable HTTP cache (default: disabled)
 - `-r`, `--recursive`: Follow links on same domain recursively
 - `-d`, `--depth`: Max depth for recursive crawling (default: 2)
+- `--scope`, `--only-under`, `--recursive-scope`: Only follow links under this prefix
 - `-o`, `--output`: Output directory or .json file (default: output/)
 
 ### How It Works
